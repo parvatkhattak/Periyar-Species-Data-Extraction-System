@@ -175,13 +175,15 @@ class PeriyarSpeciesExtractor:
         prompt = f"""
         Please analyze the following scientific text and extract all species information. 
         For each species found, provide the information in JSON format with these fields:
-        
+
         - species_name: Scientific name (genus species) or common name if scientific name not available
         - flora_or_fauna: "Flora" or "Fauna" (classify based on the species type)
-        - date_of_observation: Extract any dates mentioned (format as YYYY-MM-DD or YYYY-MM or YYYY, or date range)
+        - sampling_period: Extract any dates mentioned (format as YYYY-MM-DD or YYYY-MM or YYYY, or date range)
         - location_name: Any specific location names mentioned
         - latitude: Extract latitude if mentioned (decimal degrees)
         - longitude: Extract longitude if mentioned (decimal degrees)
+        - abundance: Extract abundance information (e.g., "common", "rare", "abundant", "few", "many", etc.)
+        - threat_status: Extract conservation or threat status (e.g., "endangered", "vulnerable", "least concern", "critically endangered", etc.)
         - additional_info: Any other relevant information about the species
         
         # Text to analyze:
@@ -285,10 +287,12 @@ class PeriyarSpeciesExtractor:
             enhanced_species = {
                 'species_name': species.get('species_name', ''),
                 'flora_or_fauna': species.get('flora_or_fauna', ''),
-                'date_of_observation': species.get('date_of_observation', ''),
+                'sampling_period': species.get('sampling_period', ''),
                 'location_name': species.get('location_name', ''),
                 'latitude': species.get('latitude', ''),
                 'longitude': species.get('longitude', ''),
+                'abundance': species.get('abundance', ''),
+                'threat_status': species.get('threat_status', ''),
                 'reference': filename_without_ext,  # Use filename without extension
                 'additional_info': species.get('additional_info', '')
             }
