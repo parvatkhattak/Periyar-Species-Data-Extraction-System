@@ -168,7 +168,7 @@ class PeriyarSpeciesExtractor:
         
         prompt = f"""
         Analyze the following text from a scientific document about species in Periyar and extract all species information.
-        
+
         For each species mentioned, extract:
         1. species_name (common name if available)
         2. scientific_name (Latin/binomial name if available)
@@ -178,9 +178,11 @@ class PeriyarSpeciesExtractor:
         6. location (specific location within Periyar if mentioned)
         7. latitude (if coordinates are provided)
         8. longitude (if coordinates are provided)
-        9. date_of_observation (if specific dates are mentioned)
-        10. notes (any additional relevant information)
-        11. reference (source document name: "{filename_without_ext}")
+        9. sampling_period (if specific dates or time periods are mentioned)
+        10. abundance (population status like "common", "rare", "abundant", "few", "many", etc.)
+        11. threat_status (conservation status like "endangered", "vulnerable", "least concern", etc.)
+        12. notes (any additional relevant information)
+        13. reference (source document name: "{filename_without_ext}")
         
         Return the data as a JSON array of objects. If information is not available, use null.
         
@@ -383,8 +385,10 @@ def create_download_files(results, filename_base, output_format):
                     'Flora Species',
                     'Fauna Species',
                     'Species with Coordinates',
-                    'Species with Dates',
+                    'Species with Sampling Period',
                     'Species with Scientific Names',
+                    'Species with Abundance Data',
+                    'Species with Threat Status',
                     'Source Files'
                 ],
                 'Count': [
@@ -392,8 +396,10 @@ def create_download_files(results, filename_base, output_format):
                     len(df[df['flora_or_fauna'].str.contains('Flora', case=False, na=False)]),
                     len(df[df['flora_or_fauna'].str.contains('Fauna', case=False, na=False)]),
                     len(df[(df['latitude'].notna()) & (df['longitude'].notna())]),
-                    len(df[df['date_of_observation'].notna()]),
+                    len(df[df['sampling_period'].notna()]) if 'sampling_period' in df.columns else 0,
                     len(df[df['scientific_name'].notna()]) if 'scientific_name' in df.columns else 0,
+                    len(df[df['abundance'].notna()]) if 'abundance' in df.columns else 0,
+                    len(df[df['threat_status'].notna()]) if 'threat_status' in df.columns else 0,
                     df['reference'].nunique()
                 ]
             }
@@ -430,12 +436,20 @@ def show_results_summary(df):
         st.metric("With Coordinates", coord_count)
     
     # Additional metrics
-    col5, col6 = st.columns(2)
+    col5, col6, col7, col8 = st.columns(4)
     with col5:
-        date_count = len(df[df['date_of_observation'].notna()])
-        st.metric("With Observation Dates", date_count)
-    
+        date_count = len(df[df['sampling_period'].notna()]) if 'sampling_period' in df.columns else 0
+        st.metric("With Sampling Period", date_count)
+
     with col6:
+        abundance_count = len(df[df['abundance'].notna()]) if 'abundance' in df.columns else 0
+        st.metric("With Abundance Data", abundance_count)
+
+    with col7:
+        threat_count = len(df[df['threat_status'].notna()]) if 'threat_status' in df.columns else 0
+        st.metric("With Threat Status", threat_count)
+
+    with col8:
         source_count = df['reference'].nunique()
         st.metric("Source Files", source_count)
 
