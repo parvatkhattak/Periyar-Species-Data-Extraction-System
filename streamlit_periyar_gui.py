@@ -124,6 +124,77 @@ class PeriyarSpeciesExtractor:
             self.logger.error(f"Error extracting text from PDF: {e}")
             return ""
     
+    def extract_reference_info(self, text: str) -> tuple:
+        """
+        Extract author names and citation year from the document text
+        
+        Returns:
+            tuple: (author_names, citation_year)
+        """
+        author_names = ""
+        citation_year = ""
+        
+        # Common patterns for academic citations and references
+        patterns = [
+            # Pattern 1: "Author, A. & Author, B. (YYYY)"
+            r'([A-Z][a-z]+(?:,\s*[A-Z]\.?\s*&?\s*[A-Z][a-z]+)*)\s*\((\d{4})\)',
+            # Pattern 2: "Author et al. (YYYY)"
+            r'([A-Z][a-z]+\s+et\s+al\.?)\s*\((\d{4})\)',
+            # Pattern 3: "Author, A., Author, B., & Author, C. YYYY"
+            r'([A-Z][a-z]+(?:,\s*[A-Z]\.?,?\s*(?:&\s*)?[A-Z][a-z]+)*)\s*(\d{4})',
+            # Pattern 4: "By: Author Name" or "Authors: Author Name"
+            r'(?:By|Authors?|Author\(s\)):\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+            # Pattern 5: Look for year in brackets or parentheses
+            r'\b(\d{4})\b',
+        ]
+        
+        # Try to find author and year patterns
+        text_sample = text[:2000]  # Search in first 2000 characters
+        
+        for i, pattern in enumerate(patterns[:4]):  # Skip the year-only pattern for now
+            matches = re.findall(pattern, text_sample, re.IGNORECASE)
+            if matches:
+                match = matches[0]
+                if isinstance(match, tuple) and len(match) == 2:
+                    author_names = match[0].strip()
+                    citation_year = match[1].strip()
+                    break
+                elif i == 3:  # "By: Author Name" pattern
+                    author_names = match.strip()
+        
+        # If no author found, try to extract from document header/title area
+        if not author_names:
+            lines = text_sample.split('\n')[:10]  # First 10 lines
+            for line in lines:
+                # Look for lines that might contain author names
+                if any(keyword in line.lower() for keyword in ['by', 'author', 'written']):
+                    # Extract potential author name after the keyword
+                    for keyword in ['by', 'author', 'authors', 'written by']:
+                        if keyword in line.lower():
+                            parts = line.lower().split(keyword)
+                            if len(parts) > 1:
+                                potential_author = parts[1].strip(' :,-').title()
+                                if len(potential_author) > 3 and len(potential_author) < 100:
+                                    author_names = potential_author
+                                    break
+        
+        # Try to find year if not found yet
+        if not citation_year:
+            year_matches = re.findall(r'\b(19\d{2}|20\d{2})\b', text_sample)
+            if year_matches:
+                # Take the most recent year or the first one found
+                citation_year = max(year_matches)
+        
+        # Clean up author names
+        if author_names:
+            # Remove common unwanted text
+            author_names = re.sub(r'\s*\(.*?\)\s*', '', author_names)  # Remove parentheses
+            author_names = re.sub(r'[^\w\s,&.]', '', author_names)     # Keep only letters, spaces, commas, &, and dots
+            author_names = author_names.strip()
+        
+        return author_names, citation_year
+
+
     def extract_text_with_gemini_vision(self, page) -> str:
         """Extract text from PDF page using Gemini Vision API"""
         try:
@@ -163,31 +234,45 @@ class PeriyarSpeciesExtractor:
         if not text.strip():
             return []
         
-        # Get filename without extension
-        filename_without_ext = os.path.splitext(source_file)[0]
+        # Extract reference information from the document
+        author_names, citation_year = self.extract_reference_info(text)
+        
+        # Create reference string
+        if author_names and citation_year:
+            reference_string = f"{author_names} ({citation_year})"
+        elif author_names:
+            reference_string = author_names
+        elif citation_year:
+            reference_string = f"Unknown Author ({citation_year})"
+        else:
+            # Fallback to filename if no reference info found
+            reference_string = os.path.splitext(source_file)[0]
         
         prompt = f"""
         Analyze the following text from a scientific document about species in Periyar and extract all species information.
 
         For each species mentioned, extract:
-        1. species_name (common name if available)
-        2. scientific_name (Latin/binomial name if available)
-        3. flora_or_fauna (Flora or Fauna)
-        4. family (taxonomic family if mentioned)
-        5. habitat (habitat description if available)
-        6. location (specific location within Periyar if mentioned)
-        7. latitude (if coordinates are provided)
-        8. longitude (if coordinates are provided)
-        9. sampling_period (if specific dates or time periods are mentioned)
-        10. abundance (population status like "common", "rare", "abundant", "few", "many", etc.)
-        11. threat_status (conservation status like "endangered", "vulnerable", "least concern", etc.)
-        12. notes (any additional relevant information)
-        13. reference (source document name: "{filename_without_ext}")
-        
+        1. species_name (scientific name or common name)
+        2. location_name (specific location within study area)
+        3. latitude (decimal degrees format like 9.458333)
+        4. longitude (decimal degrees format like 77.140000)
+        5. sampling_period_from_month (start month name)
+        6. sampling_period_from_year (start year)
+        7. sampling_period_to_month (end month name)
+        8. sampling_period_to_year (end year)
+        9. sampling_season (Pre-Monsoon, Monsoon, Post-monsoon)
+        10. order_family_species (taxonomic hierarchy in Order/Family/Species format)
+        11. threat_status (conservation status with abbreviations like EN, DD, LR)
+        12. relative_abundance (Very common, Common, Moderate, Rare, Very rare)
+        13. endemism (endemism status with abbreviations like EN-K, EN-WG, EN-I, WD)
+        14. flora_or_fauna (Flora or Fauna)
+        15. reference (use this exact format: "{reference_string}")
+        16. remarks (additional notes or information)
+
         Return the data as a JSON array of objects. If information is not available, use null.
-        
+
         Text to analyze:
-        {text[:8000]}  # Limit text length for API
+        {text[:8000]}
         """
         
         try:
@@ -200,10 +285,10 @@ class PeriyarSpeciesExtractor:
                     import json
                     species_data = json.loads(json_text)
                     
-                    # Ensure reference field uses filename without extension
+                    # Ensure reference field uses the extracted reference string
                     if isinstance(species_data, list):
                         for species in species_data:
-                            species['reference'] = filename_without_ext
+                            species['reference'] = reference_string
                         return species_data
                     return []
             
@@ -259,6 +344,12 @@ class PeriyarSpeciesExtractor:
         
         # Extract species data using original filename
         species_data = self.extract_species_from_text(text, original_filename)
+        
+        # Ensure proper reference format
+        filename_without_ext = os.path.splitext(original_filename)[0]
+        for species in species_data:
+            if 'reference' not in species or not species['reference']:
+                species['reference'] = filename_without_ext
         
         self.logger.info(f"Extracted {len(species_data)} species from {original_filename}")
         return species_data
@@ -359,6 +450,23 @@ def create_download_files(results, filename_base, output_format):
     # Create DataFrame
     df = pd.DataFrame(results)
     df = df.drop_duplicates(subset=['species_name', 'reference'])
+    
+    # Reorder columns according to the required format
+    column_order = [
+        'species_name', 'location_name', 'latitude', 'longitude',
+        'sampling_period_from_month', 'sampling_period_from_year',
+        'sampling_period_to_month', 'sampling_period_to_year',
+        'sampling_season', 'order_family_species', 'threat_status',
+        'relative_abundance', 'endemism', 'flora_or_fauna', 'reference', 'remarks'
+    ]
+    
+    # Ensure all columns exist
+    for col in column_order:
+        if col not in df.columns:
+            df[col] = ''
+    
+    # Reorder columns
+    df = df[column_order]
     df = df.sort_values(['species_name', 'reference'])
     df = df.reset_index(drop=True)
     
@@ -378,7 +486,7 @@ def create_download_files(results, filename_base, output_format):
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Species_Data', index=False)
             
-            # Add summary sheet
+            # Add summary sheet with updated metrics
             summary_data = {
                 'Metric': [
                     'Total Species',
@@ -386,20 +494,26 @@ def create_download_files(results, filename_base, output_format):
                     'Fauna Species',
                     'Species with Coordinates',
                     'Species with Sampling Period',
-                    'Species with Scientific Names',
+                    'Species with Season Data',
                     'Species with Abundance Data',
                     'Species with Threat Status',
+                    'Species with Endemism Data',
                     'Source Files'
                 ],
                 'Count': [
                     len(df),
                     len(df[df['flora_or_fauna'].str.contains('Flora', case=False, na=False)]),
                     len(df[df['flora_or_fauna'].str.contains('Fauna', case=False, na=False)]),
-                    len(df[(df['latitude'].notna()) & (df['longitude'].notna())]),
-                    len(df[df['sampling_period'].notna()]) if 'sampling_period' in df.columns else 0,
-                    len(df[df['scientific_name'].notna()]) if 'scientific_name' in df.columns else 0,
-                    len(df[df['abundance'].notna()]) if 'abundance' in df.columns else 0,
-                    len(df[df['threat_status'].notna()]) if 'threat_status' in df.columns else 0,
+                    len(df[(df['latitude'].notna()) & (df['longitude'].notna()) & 
+                          (df['latitude'] != '') & (df['longitude'] != '')]),
+                    len(df[(df['sampling_period_from_month'].notna()) | 
+                          (df['sampling_period_from_year'].notna()) |
+                          (df['sampling_period_to_month'].notna()) |
+                          (df['sampling_period_to_year'].notna())]),
+                    len(df[df['sampling_season'].notna() & (df['sampling_season'] != '')]),
+                    len(df[df['relative_abundance'].notna() & (df['relative_abundance'] != '')]),
+                    len(df[df['threat_status'].notna() & (df['threat_status'] != '')]),
+                    len(df[df['endemism'].notna() & (df['endemism'] != '')]),
                     df['reference'].nunique()
                 ]
             }
@@ -432,24 +546,46 @@ def show_results_summary(df):
         st.metric("Fauna Species", fauna_count)
     
     with col4:
-        coord_count = len(df[(df['latitude'].notna()) & (df['longitude'].notna())])
+        coord_count = len(df[(df['latitude'].notna()) & (df['longitude'].notna()) & 
+                            (df['latitude'] != '') & (df['longitude'] != '')])
         st.metric("With Coordinates", coord_count)
     
     # Additional metrics
     col5, col6, col7, col8 = st.columns(4)
     with col5:
-        date_count = len(df[df['sampling_period'].notna()]) if 'sampling_period' in df.columns else 0
-        st.metric("With Sampling Period", date_count)
+        sampling_count = len(df[(df['sampling_period_from_month'].notna()) | 
+                               (df['sampling_period_from_year'].notna()) |
+                               (df['sampling_period_to_month'].notna()) |
+                               (df['sampling_period_to_year'].notna())])
+        st.metric("With Sampling Period", sampling_count)
 
     with col6:
-        abundance_count = len(df[df['abundance'].notna()]) if 'abundance' in df.columns else 0
+        abundance_count = len(df[df['relative_abundance'].notna() & (df['relative_abundance'] != '')])
         st.metric("With Abundance Data", abundance_count)
 
     with col7:
-        threat_count = len(df[df['threat_status'].notna()]) if 'threat_status' in df.columns else 0
+        threat_count = len(df[df['threat_status'].notna() & (df['threat_status'] != '')])
         st.metric("With Threat Status", threat_count)
 
     with col8:
+        endemic_count = len(df[df['endemism'].notna() & (df['endemism'] != '')])
+        st.metric("With Endemism Data", endemic_count)
+    
+    # Additional row for more metrics
+    col9, col10, col11, col12 = st.columns(4)
+    with col9:
+        season_count = len(df[df['sampling_season'].notna() & (df['sampling_season'] != '')])
+        st.metric("With Season Data", season_count)
+    
+    with col10:
+        taxonomy_count = len(df[df['order_family_species'].notna() & (df['order_family_species'] != '')])
+        st.metric("With Taxonomy Data", taxonomy_count)
+    
+    with col11:
+        location_count = len(df[df['location_name'].notna() & (df['location_name'] != '')])
+        st.metric("With Location Data", location_count)
+    
+    with col12:
         source_count = df['reference'].nunique()
         st.metric("Source Files", source_count)
 
