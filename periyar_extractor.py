@@ -148,6 +148,76 @@ class PeriyarSpeciesExtractor:
             logger.error(f"Failed to extract text from {pdf_path}: {e}")
             return ""
     
+    def extract_reference_info(self, text: str) -> tuple:
+        """
+        Extract author names and citation year from the document text
+        
+        Returns:
+            tuple: (author_names, citation_year)
+        """
+        author_names = ""
+        citation_year = ""
+        
+        # Common patterns for academic citations and references
+        patterns = [
+            # Pattern 1: "Author, A. & Author, B. (YYYY)"
+            r'([A-Z][a-z]+(?:,\s*[A-Z]\.?\s*&?\s*[A-Z][a-z]+)*)\s*\((\d{4})\)',
+            # Pattern 2: "Author et al. (YYYY)"
+            r'([A-Z][a-z]+\s+et\s+al\.?)\s*\((\d{4})\)',
+            # Pattern 3: "Author, A., Author, B., & Author, C. YYYY"
+            r'([A-Z][a-z]+(?:,\s*[A-Z]\.?,?\s*(?:&\s*)?[A-Z][a-z]+)*)\s*(\d{4})',
+            # Pattern 4: "By: Author Name" or "Authors: Author Name"
+            r'(?:By|Authors?|Author\(s\)):\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+            # Pattern 5: Look for year in brackets or parentheses
+            r'\b(\d{4})\b',
+        ]
+        
+        # Try to find author and year patterns
+        text_sample = text[:2000]  # Search in first 2000 characters
+        
+        for i, pattern in enumerate(patterns[:4]):  # Skip the year-only pattern for now
+            matches = re.findall(pattern, text_sample, re.IGNORECASE)
+            if matches:
+                match = matches[0]
+                if isinstance(match, tuple) and len(match) == 2:
+                    author_names = match[0].strip()
+                    citation_year = match[1].strip()
+                    break
+                elif i == 3:  # "By: Author Name" pattern
+                    author_names = match.strip()
+        
+        # If no author found, try to extract from document header/title area
+        if not author_names:
+            lines = text_sample.split('\n')[:10]  # First 10 lines
+            for line in lines:
+                # Look for lines that might contain author names
+                if any(keyword in line.lower() for keyword in ['by', 'author', 'written']):
+                    # Extract potential author name after the keyword
+                    for keyword in ['by', 'author', 'authors', 'written by']:
+                        if keyword in line.lower():
+                            parts = line.lower().split(keyword)
+                            if len(parts) > 1:
+                                potential_author = parts[1].strip(' :,-').title()
+                                if len(potential_author) > 3 and len(potential_author) < 100:
+                                    author_names = potential_author
+                                    break
+        
+        # Try to find year if not found yet
+        if not citation_year:
+            year_matches = re.findall(r'\b(19\d{2}|20\d{2})\b', text_sample)
+            if year_matches:
+                # Take the most recent year or the first one found
+                citation_year = max(year_matches)
+        
+        # Clean up author names
+        if author_names:
+            # Remove common unwanted text
+            author_names = re.sub(r'\s*\(.*?\)\s*', '', author_names)  # Remove parentheses
+            author_names = re.sub(r'[^\w\s,&.]', '', author_names)     # Keep only letters, spaces, commas, &, and dots
+            author_names = author_names.strip()
+        
+        return author_names, citation_year
+
     def _extract_with_pdfplumber(self, pdf_path: str) -> str:
         """Extract text using pdfplumber"""
         text = ""
@@ -172,23 +242,44 @@ class PeriyarSpeciesExtractor:
         if not self.gemini_model:
             raise Exception("Gemini model not initialized. Call setup_gemini() first.")
         
+        # Extract reference information from the document
+        author_names, citation_year = self.extract_reference_info(text)
+        
+        # Create reference string
+        if author_names and citation_year:
+            reference_string = f"{author_names} ({citation_year})"
+        elif author_names:
+            reference_string = author_names
+        elif citation_year:
+            reference_string = f"Unknown Author ({citation_year})"
+        else:
+            # Fallback to filename if no reference info found
+            reference_string = os.path.splitext(pdf_filename)[0]
+        
         prompt = f"""
         Please analyze the following scientific text and extract all species information. 
-        For each species found, provide the information in JSON format with these fields:
+        For each species found, provide the information in JSON format with these exact fields:
 
         - species_name: Scientific name (genus species) or common name if scientific name not available
-        - flora_or_fauna: "Flora" or "Fauna" (classify based on the species type)
-        - sampling_period: Extract any dates mentioned (format as YYYY-MM-DD or YYYY-MM or YYYY, or date range)
-        - location_name: Any specific location names mentioned
-        - latitude: Extract latitude if mentioned (decimal degrees)
-        - longitude: Extract longitude if mentioned (decimal degrees)
-        - abundance: Extract abundance information (e.g., "common", "rare", "abundant", "few", "many", etc.)
-        - threat_status: Extract conservation or threat status (e.g., "endangered", "vulnerable", "least concern", "critically endangered", etc.)
-        - additional_info: Any other relevant information about the species
-        
+        - location_name: Specific location names mentioned
+        - latitude: Extract latitude if mentioned (in decimal degrees format like 9.458333)
+        - longitude: Extract longitude if mentioned (in decimal degrees format like 77.140000)
+        - sampling_period_from_month: Start month name
+        - sampling_period_from_year: Start year
+        - sampling_period_to_month: End month name  
+        - sampling_period_to_year: End year
+        - sampling_season: Season mentioned (Pre-Monsoon, Monsoon, Post-monsoon)
+        - order_family_species: Taxonomic hierarchy (Order/Family/Species format)
+        - threat_status: Conservation status with abbreviations (EN, DD, LR, etc.)
+        - relative_abundance: Abundance terms (Very common, Common, Moderate, Rare, Very rare)
+        - endemism: Endemism status with abbreviations (EN-K, EN-WG, EN-I, WD, etc.)
+        - flora_or_fauna: "Flora" or "Fauna"
+        - reference: Use this exact reference format: "{reference_string}"
+        - remarks: Any additional notes or remarks
+
         # Text to analyze:
-        # {text[:4000]}  # Limit text to avoid token limits
-        
+        # {text[:4000]}
+
         Please return ONLY a valid JSON array of species objects. Do not include any other text or explanations.
         """
         
@@ -204,10 +295,9 @@ class PeriyarSpeciesExtractor:
                 # Fallback: try to parse the entire response as JSON
                 species_data = json.loads(response_text)
             
-            # Add reference information (filename without extension)
-            filename_without_ext = os.path.splitext(pdf_filename)[0]
+            # Ensure reference information is properly set
             for species in species_data:
-                species['reference'] = filename_without_ext
+                species['reference'] = reference_string
                 
             return species_data
             
@@ -286,15 +376,21 @@ class PeriyarSpeciesExtractor:
             # Ensure required fields exist
             enhanced_species = {
                 'species_name': species.get('species_name', ''),
-                'flora_or_fauna': species.get('flora_or_fauna', ''),
-                'sampling_period': species.get('sampling_period', ''),
                 'location_name': species.get('location_name', ''),
                 'latitude': species.get('latitude', ''),
                 'longitude': species.get('longitude', ''),
-                'abundance': species.get('abundance', ''),
+                'sampling_period_from_month': species.get('sampling_period_from_month', ''),
+                'sampling_period_from_year': species.get('sampling_period_from_year', ''),
+                'sampling_period_to_month': species.get('sampling_period_to_month', ''),
+                'sampling_period_to_year': species.get('sampling_period_to_year', ''),
+                'sampling_season': species.get('sampling_season', ''),
+                'order_family_species': species.get('order_family_species', ''),
                 'threat_status': species.get('threat_status', ''),
-                'reference': filename_without_ext,  # Use filename without extension
-                'additional_info': species.get('additional_info', '')
+                'relative_abundance': species.get('relative_abundance', ''),
+                'endemism': species.get('endemism', ''),
+                'flora_or_fauna': species.get('flora_or_fauna', ''),
+                'reference': species.get('reference', filename_without_ext),
+                'remarks': species.get('remarks', '')
             }
             
             # Auto-classify if not classified
