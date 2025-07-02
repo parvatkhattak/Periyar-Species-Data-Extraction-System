@@ -124,6 +124,236 @@ class PeriyarSpeciesExtractor:
             self.logger.error(f"Error extracting text from PDF: {e}")
             return ""
     
+
+    def merge_duplicate_species(self, species_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Intelligently merge duplicate species records by combining information
+        from multiple sources to create the most complete record possible.
+        """
+        if not species_list:
+            return []
+        
+        # Group species by name (case-insensitive)
+        species_groups = {}
+        
+        for species in species_list:
+            # Handle None values properly
+            species_name_raw = species.get('species_name')
+            if species_name_raw is None:
+                species_name = ''
+            else:
+                species_name = str(species_name_raw).strip().lower()
+                
+            if not species_name:
+                continue
+                
+            if species_name not in species_groups:
+                species_groups[species_name] = []
+            species_groups[species_name].append(species)
+        
+        merged_species = []
+        
+        for species_name, duplicates in species_groups.items():
+            if len(duplicates) == 1:
+                # No duplicates, keep as is
+                merged_species.append(duplicates[0])
+            else:
+                # Merge duplicates intelligently
+                merged_record = self.merge_species_records(duplicates)
+                merged_species.append(merged_record)
+        
+        return merged_species
+
+    def merge_species_records(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Merge multiple records of the same species into a single comprehensive record.
+        Priority: Most complete record first, then merge missing information.
+        """
+        if not records:
+            return {}
+        
+        if len(records) == 1:
+            return records[0]
+        
+        # Define column priorities and merging strategies
+        merge_strategies = {
+            'species_name': 'most_complete',
+            'location_name': 'combine_unique',
+            'latitude': 'first_valid',
+            'longitude': 'first_valid',
+            'sampling_period_from_month': 'earliest_or_first',
+            'sampling_period_from_year': 'earliest_or_first',
+            'sampling_period_to_month': 'latest_or_first',
+            'sampling_period_to_year': 'latest_or_first',
+            'sampling_season': 'combine_unique',
+            'order_family_species': 'most_complete',
+            'threat_status': 'most_complete',
+            'relative_abundance': 'most_complete',
+            'endemism': 'most_complete',
+            'flora_or_fauna': 'most_complete',
+            'reference': 'combine_all',
+            'remarks': 'combine_all'
+        }
+        
+        # Sort records by completeness (most complete first)
+        sorted_records = sorted(records, key=lambda x: self.calculate_completeness_score(x), reverse=True)
+        
+        # Start with the most complete record
+        merged = sorted_records[0].copy()
+        
+        # Merge information from other records
+        for record in sorted_records[1:]:
+            for field, strategy in merge_strategies.items():
+                merged[field] = self.apply_merge_strategy(
+                    merged.get(field), 
+                    record.get(field), 
+                    strategy,
+                    field
+                )
+        
+        return merged
+
+    def calculate_completeness_score(self, record: Dict[str, Any]) -> int:
+        """
+        Calculate a completeness score for a species record.
+        Higher score means more complete information.
+        """
+        score = 0
+        important_fields = [
+            'species_name', 'location_name', 'latitude', 'longitude',
+            'sampling_period_from_month', 'sampling_period_from_year',
+            'order_family_species', 'threat_status', 'relative_abundance',
+            'endemism', 'flora_or_fauna'
+        ]
+        
+        for field in important_fields:
+            value = record.get(field)
+            if value and str(value).strip() and str(value).lower() not in ['null', 'none', 'nan', '']:
+                if field in ['latitude', 'longitude']:
+                    # Give extra weight to coordinate data
+                    score += 3
+                elif field in ['species_name', 'order_family_species']:
+                    # Give extra weight to taxonomic data
+                    score += 2
+                else:
+                    score += 1
+        
+        return score
+
+    def apply_merge_strategy(self, current_value, new_value, strategy: str, field_name: str):
+        """
+        Apply the specified merge strategy to combine two field values.
+        """
+        def is_valid_value(val):
+            return val is not None and str(val).strip() != '' and str(val).lower() not in ['null', 'none', 'nan']
+        
+        current_valid = is_valid_value(current_value)
+        new_valid = is_valid_value(new_value)
+        
+        if not current_valid and not new_valid:
+            return None
+        elif not current_valid:
+            return new_value
+        elif not new_valid:
+            return current_value
+        
+        # Both values are valid, apply strategy
+        if strategy == 'most_complete':
+            # Return the longer/more detailed value
+            if len(str(new_value)) > len(str(current_value)):
+                return new_value
+            return current_value
+        
+        elif strategy == 'combine_unique':
+            # Combine unique values separated by semicolon
+            current_parts = [part.strip() for part in str(current_value).split(';') if part.strip()]
+            new_parts = [part.strip() for part in str(new_value).split(';') if part.strip()]
+            
+            # Remove duplicates while preserving order
+            combined = []
+            seen = set()
+            for part in current_parts + new_parts:
+                part_lower = part.lower()
+                if part_lower not in seen:
+                    combined.append(part)
+                    seen.add(part_lower)
+            
+            return '; '.join(combined) if combined else current_value
+        
+        elif strategy == 'combine_all':
+            # Combine all values separated by semicolon
+            parts = [str(current_value).strip(), str(new_value).strip()]
+            unique_parts = []
+            seen = set()
+            for part in parts:
+                if part and part.lower() not in seen:
+                    unique_parts.append(part)
+                    seen.add(part.lower())
+            return '; '.join(unique_parts)
+        
+        elif strategy == 'first_valid':
+            # Return the first valid value (current takes precedence)
+            return current_value
+        
+        elif strategy == 'earliest_or_first':
+            # For dates/years, return the earliest; otherwise first valid
+            if field_name.endswith('_year'):
+                try:
+                    current_year = int(current_value)
+                    new_year = int(new_value)
+                    return min(current_year, new_year)
+                except (ValueError, TypeError):
+                    return current_value
+            elif field_name.endswith('_month'):
+                # For months, we need to consider the year context, but for now return first valid
+                return current_value
+            else:
+                return current_value
+        
+        elif strategy == 'latest_or_first':
+            # For dates/years, return the latest; otherwise first valid
+            if field_name.endswith('_year'):
+                try:
+                    current_year = int(current_value)
+                    new_year = int(new_value)
+                    return max(current_year, new_year)
+                except (ValueError, TypeError):
+                    return current_value
+            elif field_name.endswith('_month'):
+                # For months, we need to consider the year context, but for now return first valid
+                return current_value
+            else:
+                return current_value
+        
+        # Default: return current value
+        return current_value
+
+    def remove_duplicates_and_merge(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Remove duplicates and merge species information intelligently.
+        This replaces the simple drop_duplicates approach.
+        """
+        if not results:
+            return []
+        
+        self.logger.info(f"Starting deduplication process with {len(results)} records")
+        
+        # First, merge duplicate species
+        merged_results = self.merge_duplicate_species(results)
+        
+        self.logger.info(f"After merging duplicates: {len(merged_results)} unique species")
+        
+        # Additional cleanup: remove records with no species name
+        cleaned_results = []
+        for record in merged_results:
+            species_name = record.get('species_name', '').strip()
+            if species_name and species_name.lower() not in ['null', 'none', 'nan', '']:
+                cleaned_results.append(record)
+        
+        self.logger.info(f"After cleanup: {len(cleaned_results)} valid species records")
+        
+        return cleaned_results
+
     def extract_reference_info(self, text: str) -> tuple:
         """
         Extract author names and citation year from the document text
@@ -436,8 +666,19 @@ def process_uploaded_files(uploaded_files):
     status_text.empty()
     
     if results:
-        log_message(f"Processing completed! Total species extracted: {len(results)}")
-        return results
+        # Store original count for summary
+        st.session_state.original_count = len(results)
+        
+        # Apply intelligent deduplication and merging
+        log_message(f"Raw extraction completed: {len(results)} records")
+        # ADD THIS: Apply intelligent deduplication and merging
+        log_message(f"Raw extraction completed: {len(results)} records")
+        log_message("Starting deduplication and merging process...")
+        
+        deduplicated_results = st.session_state.extractor.remove_duplicates_and_merge(results)
+        
+        log_message(f"Processing completed! Final species count: {len(deduplicated_results)}")
+        return deduplicated_results
     else:
         log_message("No species data extracted from any files")
         return None
@@ -449,7 +690,7 @@ def create_download_files(results, filename_base, output_format):
     
     # Create DataFrame
     df = pd.DataFrame(results)
-    df = df.drop_duplicates(subset=['species_name', 'reference'])
+    # df = df.drop_duplicates(subset=['species_name', 'reference'])
     
     # Reorder columns according to the required format
     column_order = [
@@ -532,6 +773,9 @@ def show_results_summary(df):
     """Display results summary"""
     st.markdown("### 📊 Processing Summary")
     
+    # Add information about original vs deduplicated count
+    if 'original_count' in st.session_state:
+        st.info(f"🔄 Deduplication: {st.session_state.original_count} → {len(df)} records (removed {st.session_state.original_count - len(df)} duplicates)")
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
