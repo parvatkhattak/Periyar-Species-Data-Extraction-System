@@ -1,292 +1,691 @@
-# Periyar Species Data Extraction System
+# Periyar Species Data Extractor
 
-🌿 An AI-powered system for extracting species data from PDF documents using Google Gemini AI with OCR support for scanned documents.
+## 🌿 Project Overview
 
-## Overview
+**Periyar Species Data Extractor** is an advanced AI-powered tool designed to extract comprehensive species data from PDF documents using OCR support and intelligent data processing. The application specifically focuses on biodiversity data from the Periyar Tiger Reserve region in Kerala, India, providing researchers and conservationists with an automated solution for digitizing species information from scientific documents.
 
-This system processes PDF files containing species information from Periyar and converts them into structured CSV/Excel format. It uses Google Gemini 2.0 Flash for intelligent species identification and data extraction, with support for both text-based and scanned PDFs.
+## 🎯 Key Features
 
-## Features
+### Core Functionality
+- **AI-Powered Text Extraction**: Uses Google's Gemini 2.0 Flash model for intelligent text processing
+- **OCR Support**: Advanced Optical Character Recognition for scanned documents
+- **Species Validation**: Comprehensive validation against GBIF and marine species databases
+- **Coordinate Mapping**: Automatic GPS coordinate extraction and validation for Periyar region
+- **Multi-Author Attribution**: Intelligent author identification and citation management
+- **Data Deduplication**: Smart merging of duplicate species records
+- **Export Options**: CSV and Excel output formats with detailed summaries
 
-- **AI-Powered Extraction**: Uses Google Gemini AI for intelligent species identification
-- **OCR Support**: Handles scanned PDFs using Gemini Vision API
-- **Multiple Interfaces**: 
-  - Command-line batch processor
-  - Interactive terminal mode
-  - Web-based Streamlit GUI
-- **Flexible Output**: CSV and Excel formats with customizable naming
-- **Data Enhancement**: Automatic species classification and geocoding support
-- **Batch Processing**: Process multiple PDFs simultaneously
-- **Data Validation**: Duplicate removal and data cleaning
+### Advanced Processing
+- **Large PDF Handling**: Optimized processing for multi-page documents with progress tracking
+- **Location Database**: Built-in Periyar location database with coordinates
+- **Taxonomic Validation**: Order/Family/Species classification verification
+- **Conservation Status**: IUCN threat status recognition and standardization
+- **Endemic Species Detection**: Western Ghats endemism classification
 
-## Installation
+## 🏗️ Architecture & State Flow
 
-### Prerequisites
+### Application State Flow Diagram
 
-- Python 3.7 or higher
-- Google Gemini API key ([Get one here](https://makersuite.google.com/app/apikey))
-
-### Install Required Packages
-
-```bash
-pip install -r requirements.txt
+```
+┌─────────────────┐
+│   Application   │
+│   Startup       │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│  Initialize     │
+│  Session State  │
+│  - extractor    │
+│  - api_tested   │
+│  - results      │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   API Key       │
+│   Input &       │
+│   Validation    │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐      ┌─────────────────┐
+│   Test API      │─────▶│   API Failed    │
+│   Connection    │      │   Show Error    │
+└─────────┬───────┘      └─────────────────┘
+          │ ✓
+          ▼
+┌─────────────────┐
+│   File Upload   │
+│   Interface     │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Processing    │
+│   Settings      │
+│   Configuration │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐      ┌─────────────────┐
+│   PDF File(s)   │─────▶│   Single PDF    │
+│   Analysis      │      │   Processing    │
+└─────────┬───────┘      └─────────┬───────┘
+          │                        │
+          ▼                        ▼
+┌─────────────────┐      ┌─────────────────┐
+│   Multi-PDF     │      │   Text          │
+│   Batch         │      │   Extraction    │
+│   Processing    │      └─────────┬───────┘
+└─────────┬───────┘                │
+          │                        ▼
+          └──────────────────────▶ ┌─────────────────┐
+                                   │   Author        │
+                                   │   Extraction    │
+                                   └─────────┬───────┘
+                                             │
+                                             ▼
+                                   ┌─────────────────┐
+                                   │   Coordinate    │
+                                   │   Mapping       │
+                                   └─────────┬───────┘
+                                             │
+                                             ▼
+                                   ┌─────────────────┐
+                                   │   Species       │
+                                   │   Extraction    │
+                                   └─────────┬───────┘
+                                             │
+                                             ▼
+                                   ┌─────────────────┐
+                                   │   Data          │
+                                   │   Validation    │
+                                   └─────────┬───────┘
+                                             │
+                                             ▼
+                                   ┌─────────────────┐
+                                   │   Deduplication │
+                                   │   & Merging     │
+                                   └─────────┬───────┘
+                                             │
+                                             ▼
+                                   ┌─────────────────┐
+                                   │   Results       │
+                                   │   Display       │
+                                   └─────────┬───────┘
+                                             │
+                                             ▼
+                                   ┌─────────────────┐
+                                   │   Export        │
+                                   │   Options       │
+                                   └─────────────────┘
 ```
 
-Or install manually:
+### Detailed Processing Flow
 
-```bash
-pip install pandas openpyxl pdfplumber google-generativeai streamlit pymupdf pillow geopy
+#### 1. **Initialization Phase**
+```
+┌─────────────────┐
+│   App Start     │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│  Load Session   │
+│  State          │
+│  - extractor    │
+│  - api_tested   │
+│  - logs         │
+│  - results      │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│  Configure      │
+│  Streamlit UI   │
+│  - Page config  │
+│  - CSS styles   │
+│  - Sidebar      │
+└─────────────────┘
 ```
 
-### Optional Dependencies
-
-For enhanced OCR support:
-```bash
-pip install pytesseract
+#### 2. **API Configuration Flow**
+```
+┌─────────────────┐
+│   API Key       │
+│   Input         │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐      ┌─────────────────┐
+│   Validate      │─────▶│   Invalid Key   │
+│   Key Format    │      │   Show Error    │
+└─────────┬───────┘      └─────────────────┘
+          │ ✓
+          ▼
+┌─────────────────┐
+│   Initialize    │
+│   Gemini API    │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐      ┌─────────────────┐
+│   Test API      │─────▶│   Connection    │
+│   Connection    │      │   Failed        │
+└─────────┬───────┘      └─────────────────┘
+          │ ✓
+          ▼
+┌─────────────────┐
+│   API Ready     │
+│   Enable UI     │
+└─────────────────┘
 ```
 
-## Project Structure
+#### 3. **File Processing Pipeline**
+```
+┌─────────────────┐
+│   File Upload   │
+│   Multiple PDFs │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   For Each PDF  │
+│   Create Temp   │
+│   File          │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐      ┌─────────────────┐
+│   Check PDF     │─────▶│   Large PDF     │
+│   Size/Pages    │      │   (>3 pages)    │
+└─────────┬───────┘      └─────────┬───────┘
+          │                        │
+          │ Small PDF              ▼
+          ▼                ┌─────────────────┐
+┌─────────────────┐        │   Enhanced      │
+│   Standard      │        │   Processing    │
+│   Processing    │        │   with Progress │
+└─────────┬───────┘        └─────────┬───────┘
+          │                          │
+          └─────────┬────────────────┘
+                    │
+                    ▼
+          ┌─────────────────┐
+          │   Extract Full  │
+          │   Document Text │
+          └─────────┬───────┘
+                    │
+                    ▼
+          ┌─────────────────┐
+          │   Extract       │
+          │   Authors       │
+          └─────────┬───────┘
+                    │
+                    ▼
+          ┌─────────────────┐
+          │   Build         │
+          │   Coordinate    │
+          │   Mapping       │
+          └─────────┬───────┘
+                    │
+                    ▼
+          ┌─────────────────┐
+          │   Process       │
+          │   Each Page     │
+          └─────────┬───────┘
+                    │
+                    ▼
+          ┌─────────────────┐
+          │   Merge         │
+          │   Duplicates    │
+          └─────────────────┘
+```
+
+#### 4. **Species Extraction Flow**
+```
+┌─────────────────┐
+│   Page Text     │
+│   Input         │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Gemini AI     │
+│   Processing    │
+│   with Enhanced │
+│   Prompt        │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐      ┌─────────────────┐
+│   Extract JSON  │─────▶│   Parse Error   │
+│   from Response │      │   Retry Logic   │
+└─────────┬───────┘      └─────────────────┘
+          │ ✓
+          ▼
+┌─────────────────┐
+│   For Each      │
+│   Species       │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Clean &       │
+│   Validate Data │
+│   - Names       │
+│   - Coordinates │
+│   - Dates       │
+│   - Status      │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Author        │
+│   Attribution   │
+│   Analysis      │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Coordinate    │
+│   Enrichment    │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Enhanced      │
+│   Remarks       │
+│   Generation    │
+└─────────────────┘
+```
+
+#### 5. **Validation Pipeline**
+```
+┌─────────────────┐
+│   Species List  │
+│   Input         │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   For Each      │
+│   Species       │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐      ┌─────────────────┐
+│   Name          │─────▶│   GBIF API      │
+│   Validation    │      │   Query         │
+└─────────┬───────┘      └─────────┬───────┘
+          │                        │
+          ▼                        ▼
+┌─────────────────┐      ┌─────────────────┐
+│   Taxonomy      │      │   Cache Result  │
+│   Validation    │      └─────────────────┘
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐      ┌─────────────────┐
+│   Geographic    │─────▶│   Occurrence    │
+│   Validation    │      │   Check India   │
+└─────────┬───────┘      └─────────────────┘
+          │
+          ▼
+┌─────────────────┐
+│   Periyar       │
+│   Database      │
+│   Check         │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Calculate     │
+│   Confidence    │
+│   Score         │
+└─────────┬───────┘
+          │
+          ▼
+┌─────────────────┐
+│   Generate      │
+│   Validation    │
+│   Notes         │
+└─────────────────┘
+```
+
+## 🛠️ Technology Stack
+
+### Core Technologies
+- **Python 3.8+**: Main programming language
+- **Streamlit**: Web application framework
+- **Google Generative AI (Gemini 2.0)**: AI text processing
+- **PyMuPDF (fitz)**: PDF text extraction
+- **PIL (Pillow)**: Image processing for OCR
+
+### Data Processing Libraries
+- **pandas**: Data manipulation and analysis
+- **openpyxl**: Excel file generation
+- **fuzzywuzzy**: Fuzzy string matching
+- **regex (re)**: Pattern matching and text processing
+
+### External APIs
+- **GBIF API**: Species validation and taxonomic data
+- **WORMS API**: Marine species validation
+- **Google Gemini API**: AI-powered text extraction
+
+### Additional Dependencies
+- **python-dotenv**: Environment variable management
+- **requests**: HTTP API calls
+- **base64**: Image encoding for OCR
+- **tempfile**: Temporary file handling
+- **logging**: Application logging
+
+## 📁 Project Structure
 
 ```
 periyar-species-extractor/
-├── periyar_extractor.py          # Core extraction engine
-├── batch_processor.py            # Batch processing for multiple PDFs
-├── streamlit_periyar_gui.py      # Web GUI interface
-├── requirements.txt              # Python dependencies
-└── README.md                     # This file
+│
+├── streamlit_periyar_gui.py          # Main application file
+├── requirements.txt                   # Python dependencies
+├── .env                              # Environment variables (API keys)
+├── README.md                         # This file
+
 ```
 
-## Usage
+## 🚀 Installation & Setup
 
-### 1. Web Interface (Recommended)
+### Prerequisites
+- Python 3.8 or higher
+- Google Cloud API access with Gemini API enabled
+- Stable internet connection for API calls
 
-Launch the Streamlit web interface:
+### Step-by-Step Installation
 
-```bash
-streamlit run streamlit_periyar_gui.py
-```
-
-Features:
-- Drag-and-drop PDF upload
-- Real-time processing log
-- Data preview and download
-- OCR support for scanned documents
-
-### 2. Batch Processing (Command Line)
-
-Process multiple PDFs from command line:
-
-```bash
-python batch_processor.py /path/to/pdf/directory
-```
-
-**Options:**
-```bash
-python batch_processor.py [INPUT_PATH] [OPTIONS]
-
-Options:
-  -o, --output DIR        Output directory (default: output)
-  -n, --name NAME         Base name for output files
-  -k, --api-key KEY       Gemini API key
-  --csv-only             Save only CSV format
-  --excel-only           Save only Excel format
-```
-
-**Examples:**
-```bash
-# Process all PDFs in a directory
-python batch_processor.py ./pdfs/ -o ./results/
-
-# Process single PDF with custom name
-python batch_processor.py species_report.pdf -n "periyar_analysis"
-
-# Save only CSV format
-python batch_processor.py ./pdfs/ --csv-only
-```
-
-### 3. Interactive Mode
-
-Run without arguments for interactive setup:
-
-```bash
-python batch_processor.py
-```
-
-### 4. Direct Python Usage
-
-```python
-from periyar_extractor import PeriyarSpeciesExtractor
-
-# Initialize extractor
-extractor = PeriyarSpeciesExtractor()
-extractor.setup_gemini("your-api-key")
-
-# Process single PDF
-species_data = extractor.process_pdf("species_report.pdf")
-
-# Process multiple PDFs
-df = extractor.process_multiple_pdfs("./pdf_directory/")
-
-# Save results
-extractor.save_to_csv(df, "results.csv")
-extractor.save_to_excel(df, "results.xlsx")
-```
-
-## Configuration
-
-### API Key Setup
-
-Set your Gemini API key in one of these ways:
-
-1. **Environment Variable:**
+1. **Clone the Repository**
    ```bash
-   export GEMINI_API_KEY="your-api-key-here"
+   git clone https://github.com/your-username/periyar-species-extractor.git
+   cd periyar-species-extractor
    ```
 
-2. **Command Line:**
+2. **Create Virtual Environment**
    ```bash
-   python batch_processor.py --api-key "your-api-key-here" ./pdfs/
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. **Interactive Input:** The system will prompt for API key if not provided
+3. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-4. **Web Interface:** Modify the API_KEY variable in `streamlit_periyar_gui.py`
+4. **Set Up Environment Variables**
+   ```bash
+   # Create .env file
+   echo "GEMINI_API_KEY=your_gemini_api_key_here" > .env
+   ```
 
-## Output Format
+5. **Run the Application**
+   ```bash
+   streamlit run streamlit_periyar_gui.py
+   ```
 
-The system extracts the following information for each species:
+### Requirements.txt
+```txt
+streamlit>=1.28.0
+google-generativeai>=0.3.0
+PyMuPDF>=1.23.0
+Pillow>=10.0.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+fuzzywuzzy>=0.18.0
+python-Levenshtein>=0.20.0
+```
 
-| Field | Description |
-|-------|-------------|
-| `species_name` | Common name of the species |
-| `scientific_name` | Latin/binomial scientific name |
-| `flora_or_fauna` | Classification as Flora or Fauna |
-| `family` | Taxonomic family |
-| `habitat` | Habitat description |
-| `location_name` | Specific location within Periyar |
-| `latitude` | GPS latitude (if available) |
-| `longitude` | GPS longitude (if available) |
-| `date_of_observation` | Date of observation |
-| `reference` | Source PDF filename |
-| `additional_info` | Other relevant notes |
+## 🎛️ Configuration Options
 
-## Advanced Features
+### Processing Settings
+- **Delay Between Pages**: 1.0-10.0 seconds (default: 3.0)
+- **Max Retries**: 2-7 attempts (default: 3)
+- **Extraction Mode**: Standard/Detailed/Maximum
+- **Coordinate Validation**: Enable/Disable Periyar region validation
+- **Name Cleaning**: Enable/Disable scientific name standardization
 
-### OCR Support
+### Validation Settings
+- **Species Validation**: Enable/Disable external database validation
+- **Confidence Threshold**: 0.0-1.0 (default: 0.5)
+- **Show Invalid Species**: Include/Exclude failed validations
 
-The system automatically detects scanned PDFs and uses OCR:
-- Primary: Gemini Vision API for intelligent text extraction
-- Fallback: Tesseract OCR (if installed)
-- Hybrid approach: Combines normal text extraction with OCR
+### Output Settings
+- **Export Format**: CSV, Excel, or Both
+- **Include Validation Data**: Add validation columns to output
+- **Summary Sheet**: Include processing summary in Excel files
 
-### Data Enhancement
+## 📊 Data Schema
 
-- **Automatic Classification**: Species are classified as Flora/Fauna based on context
-- **Geocoding**: Location names are converted to coordinates (requires geopy)
-- **Duplicate Removal**: Automatic deduplication based on species name and source
-- **Data Validation**: Ensures data quality and consistency
+### Core Species Data Structure
+```json
+{
+  "species_name": "Exact species name from document",
+  "location_name": "Specific location within Periyar",
+  "latitude": 9.458333,
+  "longitude": 77.140000,
+  "sampling_period_from_month": "January",
+  "sampling_period_from_year": 2020,
+  "sampling_period_to_month": "December", 
+  "sampling_period_to_year": 2020,
+  "sampling_season": "Pre-Monsoon",
+  "order_family_species": "Primates/Cercopithecidae/Macaca radiata",
+  "threat_status": "EN",
+  "relative_abundance": "Common",
+  "endemism": "EN-WG",
+  "flora_or_fauna": "Fauna",
+  "reference": "Author citation",
+  "remarks": "Additional notes and context"
+}
+```
 
-### Batch Processing Features
+### Validation Data Structure
+```json
+{
+  "is_valid": true,
+  "confidence_score": 0.85,
+  "corrected_name": "Standardized species name",
+  "validation_details": {
+    "name_validation": {},
+    "taxonomic_validation": {},
+    "geographic_validation": {},
+    "format_validation": {},
+    "periyar_validation": {}
+  },
+  "validation_notes": "Human-readable validation summary"
+}
+```
 
-- **Progress Tracking**: Real-time progress updates
-- **Error Handling**: Continues processing even if individual files fail
-- **Detailed Logging**: Comprehensive processing logs
-- **Resume Capability**: Can handle large batches efficiently
+## 🔍 Core Components Deep Dive
 
-## Troubleshooting
+### 1. PeriyarSpeciesExtractor Class
+
+**Primary Functions:**
+- `setup_gemini()`: Initialize Gemini AI model
+- `process_large_pdf()`: Handle multi-page documents with progress tracking
+- `extract_species_from_page()`: Process individual pages with AI
+- `extract_location_coordinate_mapping()`: Build coordinate database from document
+- `merge_duplicate_species()`: Intelligent deduplication and merging
+
+**Key Features:**
+- Multi-author attribution system
+- Coordinate enrichment from document context
+- Smart text cleaning and validation
+- Retry logic for API failures
+
+### 2. SpeciesValidator Class
+
+**Validation Pipeline:**
+- **Name Validation**: GBIF database verification
+- **Taxonomic Validation**: Order/Family/Species structure check
+- **Geographic Validation**: India/Periyar occurrence verification
+- **Format Validation**: Scientific name format compliance
+- **Periyar Validation**: Local species database check
+
+**Confidence Scoring:**
+- Weighted validation results (30% name, 25% geographic, 20% taxonomic, 15% format, 10% Periyar)
+- 0.0-1.0 confidence scale
+- Configurable threshold filtering
+
+### 3. PeriyarLocationDatabase Class
+
+**Built-in Locations:**
+- Major landmarks (Periyar Lake, Thekkady, Kumily)
+- Trails and routes (Nature Trail, Bamboo Rafting)
+- Forest compartments (Thannikudy, Manakkavala)
+- Research stations and accommodations
+
+**Coordinate Features:**
+- Fuzzy location matching
+- Elevation data integration
+- Bounds validation for Periyar region (9.0-10.0°N, 76.5-77.5°E)
+
+## 🔄 Processing Workflows
+
+### Single PDF Processing
+1. **Text Extraction**: PyMuPDF + OCR fallback
+2. **Author Detection**: Pattern matching for citations
+3. **Coordinate Mapping**: GPS data extraction from full document
+4. **Species Extraction**: AI-powered information extraction
+5. **Data Cleaning**: Standardization and validation
+6. **Deduplication**: Smart merging of duplicate records
+
+### Batch PDF Processing
+1. **File Queue Management**: Sequential processing with progress tracking
+2. **Memory Optimization**: Temporary file handling
+3. **Error Recovery**: Per-file error handling with continuation
+4. **Results Aggregation**: Cross-document deduplication
+5. **Validation Pipeline**: Batch species validation
+6. **Export Generation**: Multi-format output creation
+
+### Validation Workflow
+1. **Input Preprocessing**: Species list preparation
+2. **External API Calls**: GBIF and WORMS database queries
+3. **Local Database Check**: Periyar species reference matching
+4. **Confidence Calculation**: Multi-factor scoring algorithm
+5. **Results Filtering**: Threshold-based inclusion/exclusion
+6. **Note Generation**: Human-readable validation summaries
+
+## 🎯 Use Cases & Applications
+
+### Research Applications
+- **Biodiversity Surveys**: Digitize field survey reports
+- **Literature Reviews**: Extract species data from research papers
+- **Meta-Analysis**: Aggregate species information across studies
+- **Database Population**: Automated data entry for biodiversity databases
+
+### Conservation Applications
+- **Species Monitoring**: Track species occurrence over time
+- **Protected Area Management**: Inventory species within reserves
+- **Threat Assessment**: Compile conservation status information
+- **Endemic Species Tracking**: Identify and catalog endemic flora/fauna
+
+### Academic Applications
+- **Thesis Data Extraction**: Process research document repositories
+- **Curriculum Development**: Create species reference materials
+- **Student Projects**: Provide datasets for analysis
+- **Publication Support**: Standardize species reporting
+
+## 🚨 Error Handling & Troubleshooting
 
 ### Common Issues
 
-**1. API Key Error**
+#### API Connection Problems
+- **Symptom**: API test fails
+- **Solution**: Verify API key, check internet connection
+- **Prevention**: Use environment variables, implement retry logic
+
+#### PDF Processing Errors
+- **Symptom**: No text extracted from PDF
+- **Solution**: Enable OCR mode, check PDF quality
+- **Prevention**: Pre-process scanned documents
+
+#### Memory Issues
+- **Symptom**: Application crashes with large PDFs
+- **Solution**: Increase delay between pages, reduce batch size
+- **Prevention**: Implement pagination and cleanup
+
+#### Validation Failures
+- **Symptom**: All species marked as invalid
+- **Solution**: Lower confidence threshold, check internet connectivity
+- **Prevention**: Cache validation results, implement offline fallback
+
+### Debug Mode
+Enable detailed logging by setting environment variable:
+```bash
+export DEBUG=True
 ```
-Error: Failed to configure Gemini API
-```
-- Verify your API key is correct
-- Check internet connection
-- Ensure API key has proper permissions
 
-**2. PDF Processing Error**
-```
-Error: No text extracted from PDF
-```
-- PDF might be image-based (OCR will be attempted)
-- File might be corrupted
-- Try with different PDF files
+## 📈 Performance Optimization
 
-**3. Import Errors**
-```
-ImportError: No module named 'pdfplumber'
-```
-- Install missing dependencies: `pip install -r requirements.txt`
+### Processing Speed
+- **Page Delays**: Balance extraction quality vs. speed
+- **API Caching**: Reduce redundant validation calls
+- **Batch Processing**: Optimize memory usage for large files
+- **Retry Logic**: Smart exponential backoff
 
-**4. Empty Results**
-```
-No species data extracted
-```
-- Check if PDF contains species information
-- Try with different PDF files
-- Verify API key is working
+### Memory Management
+- **Temporary Files**: Automatic cleanup after processing
+- **Session State**: Efficient data structure management
+- **Image Processing**: Optimized resolution for OCR
+- **Data Streaming**: Process results incrementally
 
-### Performance Tips
+### Accuracy Improvements
+- **Enhanced Prompts**: Detailed AI instructions for better extraction
+- **Validation Layers**: Multiple verification systems
+- **Context Analysis**: Surrounding text for better attribution
+- **Coordinate Validation**: Geographic bounds checking
 
-- **Large PDFs**: Process in smaller batches for better performance
-- **OCR Processing**: Scanned PDFs take longer to process
-- **API Limits**: Be aware of Gemini API rate limits
-- **Memory Usage**: Close unnecessary applications when processing large batches
+## 🔒 Security & Privacy
 
-## Dependencies
+### API Key Management
+- Environment variable storage
+- No hardcoded credentials
+- Secure session handling
 
-### Core Dependencies
-- `pandas` - Data manipulation and analysis
-- `openpyxl` - Excel file handling
-- `pdfplumber` - PDF text extraction
-- `google-generativeai` - Gemini AI API
-- `streamlit` - Web interface
-- `pymupdf` - PDF processing with OCR support
-- `pillow` - Image processing
+### Data Privacy
+- Temporary file processing
+- No permanent data storage
+- Local processing priority
 
-### Optional Dependencies
-- `geopy` - Geocoding support
-- `pytesseract` - Alternative OCR engine
+### Input Validation
+- File type restrictions
+- Size limitations
+- Content sanitization
 
-## Contributing
+## 🤝 Contributing
 
+### Development Setup
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+2. Create feature branch: `git checkout -b feature/new-feature`
+3. Install development dependencies: `pip install -r requirements-dev.txt`
+4. Run tests: `python -m pytest tests/`
+5. Submit pull request
 
-## License
+### Code Standards
+- PEP 8 compliance
+- Type hints for public methods
+- Comprehensive docstrings
+- Unit test coverage >80%
 
-This project is licensed under the MIT License. See LICENSE file for details.
+### Feature Requests
+- Use GitHub Issues template
+- Provide detailed use case description
+- Include sample data if applicable
 
-## Support
 
-For issues and questions:
-1. Check the troubleshooting section
-2. Review the examples
-3. Open an issue on GitHub
+## 🙏 Acknowledgments
 
-## Changelog
-
-### Version 1.0.0
-- Initial release with basic PDF processing
-- Gemini AI integration
-- Batch processing support
-
-### Version 1.1.0
-- Added OCR support for scanned PDFs
-- Streamlit web interface
-- Enhanced error handling
-- Improved data validation
-
-### Version 1.2.0
-- Gemini Vision API integration
-- Interactive processing mode
-- Advanced geocoding features
-- Performance optimizations
-
----
-
-**Made with ❤️ for Periyar species research**
+- **Periyar Tiger Reserve** for conservation inspiration
+- **Google Gemini AI** for advanced text processing capabilities
+- **GBIF** for species validation services
+- **Streamlit** for the web application framework
+- **Open Source Community** for supporting libraries
